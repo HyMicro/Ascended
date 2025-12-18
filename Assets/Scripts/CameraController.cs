@@ -3,54 +3,77 @@ using UnityEngine;
 public class CameraController : MonoBehaviour
 {
     [Header("Target & Speed")]
-    [SerializeField] private Transform target; // Drag Player ke sini
-    [SerializeField] private float smoothSpeed = 0.125f; // Seberapa cepat kamera mengejar target (damping)
-    [SerializeField] private float lookAheadY = 2f; // Seberapa jauh kamera 'melihat' ke atas dari Player
+    [SerializeField] private Transform target; 
+    [SerializeField] private float smoothSpeed = 0.125f; 
+    [SerializeField] private float lookAheadY = 2f; 
     
-    [Header("Vertical Lock")]
-    [SerializeField] private float minCameraY = 0f; // Kamera tidak boleh turun di bawah Y=0 (Start Tower)
+    [Header("Vertical Lock Settings")]
+    [SerializeField] private float minCameraY = 0f; 
+    [SerializeField] private bool allowFallingCamera = false; // Set ke true kalau mau kamera ngikut pas jatuh biasa
+    [SerializeField] private float teleportThreshold = 10f; // Jarak jauh untuk anggap player teleport/jatuh parah
 
     private Vector3 currentVelocity;
-    
+    private float lastTargetY;
+
+    void Start()
+    {
+        if (target != null)
+        {
+            // Set posisi awal kamera pas start
+            transform.position = new Vector3(target.position.x, target.position.y + lookAheadY, transform.position.z);
+            lastTargetY = target.position.y;
+        }
+    }
+
     void LateUpdate()
     {
         if (target == null) return;
         
         // 1. Tentukan Target Posisi
-        // Kamera melihat ke target.y + lookAheadY
         Vector3 desiredPosition = new Vector3(
             target.position.x, 
             target.position.y + lookAheadY, 
             transform.position.z
         );
 
-        // 2. Vertical Lock (PENTING!)
-        // Kamera TIDAK boleh turun di bawah posisi Y minimum yang ditentukan (atau posisi Y kamera saat ini).
         float targetY = desiredPosition.y;
+
+        // 2. Logika Deteksi Teleport / Jatuh Parah (Fall Consequence)
+        // Kalau jarak player sekarang ama posisi terakhir jauh banget (melebihi threshold), 
+        // kita paksa kamera buat ikut turun instan atau sangat cepat.
+        float distanceMoved = Mathf.Abs(target.position.y - lastTargetY);
         
-        // Kamera hanya bergerak ke Y jika Player di atas minCameraY DAN di atas posisi kamera saat ini
-        if (targetY < minCameraY)
+        if (distanceMoved > teleportThreshold)
         {
-            targetY = minCameraY;
+            // Player baru aja teleport/jatuh ke biome bawah
+            // Kita reset posisi kamera supaya nggak nahan di atas
+            Vector3 teleportPos = new Vector3(transform.position.x, targetY, transform.position.z);
+            transform.position = teleportPos; 
+            currentVelocity = Vector3.zero; // Reset momentum kamera
         }
-        else if (targetY < transform.position.y)
+        else
         {
-            // Jika Player jatuh, kamera tidak turun (kecuali sampai minCameraY)
-            targetY = transform.position.y;
+            // 3. Logika Vertical Lock Normal
+            if (targetY < minCameraY)
+            {
+                targetY = minCameraY;
+            }
+            else if (!allowFallingCamera && targetY < transform.position.y)
+            {
+                // Tetap nahan di atas kalau jatuh-jatuh kecil biasa biar nggak janky
+                targetY = transform.position.y;
+            }
         }
 
         desiredPosition.y = targetY;
+        lastTargetY = target.position.y; // Simpan posisi buat cek frame depan
 
-
-        // 3. Smooth Damping
-        // Gunakan SmoothDamp untuk pergerakan yang mulus
-        Vector3 smoothedPosition = Vector3.SmoothDamp(
+        // 4. Smooth Damping
+        transform.position = Vector3.SmoothDamp(
             transform.position, 
             desiredPosition, 
             ref currentVelocity, 
             smoothSpeed
         );
-
-        transform.position = smoothedPosition;
     }
 }
